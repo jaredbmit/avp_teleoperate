@@ -82,7 +82,7 @@ class Dex3_1_Controller:
         while True:
             if any(self.left_hand_state_array) and any(self.right_hand_state_array):
                 break
-            time.sleep(0.01)
+            time.sleep(0.1)
             print("[Dex3_1_Controller] Waiting to subscribe dds...")
 
         hand_control_process = Process(target=self.control_process, args=(left_hand_array, right_hand_array,  self.left_hand_state_array, self.right_hand_state_array,
@@ -204,24 +204,138 @@ class Dex3_1_Controller:
         finally:
             print("Dex3_1_Controller has been closed.")
 
+class Dex3_1_Simple_Controller:
+    def __init__(self):
+        print("Initialize Dex3_1_Simple_Controller...")
+
+        # initialize handcmd publisher
+        self.LeftHandCmb_publisher = ChannelPublisher(kTopicDex3LeftCommand, HandCmd_)
+        self.LeftHandCmb_publisher.Init()
+        self.RightHandCmb_publisher = ChannelPublisher(kTopicDex3RightCommand, HandCmd_)
+        self.RightHandCmb_publisher.Init()
+
+        self.LeftHandState_subscriber = ChannelSubscriber(kTopicDex3LeftState, HandState_)
+        self.LeftHandState_subscriber.Init()
+        self.RightHandState_subscriber = ChannelSubscriber(kTopicDex3RightState, HandState_)
+        self.RightHandState_subscriber.Init()
+
+        # Shared Arrays for hand states
+        self.left_hand_state_array  = Array('d', Dex3_Num_Motors, lock=True)
+        self.right_hand_state_array = Array('d', Dex3_Num_Motors, lock=True)
+
+        # initialize subscribe thread
+        self.subscribe_state_thread = threading.Thread(target=self._subscribe_hand_state)
+        self.subscribe_state_thread.daemon = True
+        self.subscribe_state_thread.start()
+
+        while True:
+            if any(self.left_hand_state_array) and any(self.right_hand_state_array):
+                break
+            time.sleep(0.1)
+            print("[Dex3_1_Controller] Waiting to subscribe dds...")
+
+        q = 0.0
+        dq = 0.0
+        tau = 0.0
+        kp = 1.5
+        kd = 0.2
+
+        # initialize dex3-1's left hand cmd msg
+        self.left_msg  = unitree_hg_msg_dds__HandCmd_()
+        for id in Dex3_1_Left_JointIndex:
+            ris_mode = self._RIS_Mode(id = id, status = 0x01)
+            motor_mode = ris_mode._mode_to_uint8()
+            self.left_msg.motor_cmd[id].mode = motor_mode
+            self.left_msg.motor_cmd[id].q    = q
+            self.left_msg.motor_cmd[id].dq   = dq
+            self.left_msg.motor_cmd[id].tau  = tau
+            self.left_msg.motor_cmd[id].kp   = kp
+            self.left_msg.motor_cmd[id].kd   = kd
+
+        # initialize dex3-1's right hand cmd msg
+        self.right_msg = unitree_hg_msg_dds__HandCmd_()
+        for id in Dex3_1_Right_JointIndex:
+            ris_mode = self._RIS_Mode(id = id, status = 0x01)
+            motor_mode = ris_mode._mode_to_uint8()
+            self.right_msg.motor_cmd[id].mode = motor_mode
+            self.right_msg.motor_cmd[id].q    = q
+            self.right_msg.motor_cmd[id].dq   = dq
+            self.right_msg.motor_cmd[id].tau  = tau
+            self.right_msg.motor_cmd[id].kp   = kp
+            self.right_msg.motor_cmd[id].kd   = kd
+
+    def _subscribe_hand_state(self):
+        while True:
+            left_hand_msg  = self.LeftHandState_subscriber.Read()
+            right_hand_msg = self.RightHandState_subscriber.Read()
+            if left_hand_msg is not None and right_hand_msg is not None:
+                # Update left hand state
+                for idx, id in enumerate(Dex3_1_Left_JointIndex):
+                    self.left_hand_state_array[idx] = left_hand_msg.motor_state[id].q
+                # Update right hand state
+                for idx, id in enumerate(Dex3_1_Right_JointIndex):
+                    self.right_hand_state_array[idx] = right_hand_msg.motor_state[id].q
+            time.sleep(0.002)
+
+    def print_hand_state(self):
+        print("left: ", [self.left_hand_state_array[idx] for idx in range(7)])
+        print("right: ", [self.right_hand_state_array[idx] for idx in range(7)])
+    
+    class _RIS_Mode:
+        def __init__(self, id=0, status=0x01, timeout=0):
+            self.motor_mode = 0
+            self.id = id & 0x0F  # 4 bits for id
+            self.status = status & 0x07  # 3 bits for status
+            self.timeout = timeout & 0x01  # 1 bit for timeout
+
+        def _mode_to_uint8(self):
+            self.motor_mode |= (self.id & 0x0F)
+            self.motor_mode |= (self.status & 0x07) << 4
+            self.motor_mode |= (self.timeout & 0x01) << 7
+            return self.motor_mode
+
+    def ctrl_dual_hand_binary(self, left_cmd: bool, right_cmd: bool):
+        """True means close"""
+        print("left: ", [self.left_hand_state_array[idx] for idx in range(7)])
+        print("right: ", [self.right_hand_state_array[idx] for idx in range(7)])
+        if left_cmd:
+            left_q_target = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]) * np.pi / 3
+        else:
+            left_q_target = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]) * np.pi / 3
+        if right_cmd:
+            right_q_target = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]) * np.pi / 3
+        else:
+            right_q_target = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]) * np.pi / 3
+        self.ctrl_dual_hand(left_q_target, right_q_target)
+
+    def ctrl_dual_hand(self, left_q_target, right_q_target):
+        """Set target joint positions for left and right hands."""
+        for i, joint_enum in enumerate(Dex3_1_Left_JointIndex):
+            self.left_msg.motor_cmd[joint_enum].q = left_q_target[i]
+
+        for i, joint_enum in enumerate(Dex3_1_Right_JointIndex):
+            self.right_msg.motor_cmd[joint_enum].q = right_q_target[i]
+
+        self.LeftHandCmb_publisher.Write(self.left_msg)
+        self.RightHandCmb_publisher.Write(self.right_msg)
+
 class Dex3_1_Left_JointIndex(IntEnum):
     kLeftHandThumb0 = 0
-    kLeftHandThumb1 = 1
-    kLeftHandThumb2 = 2
-    kLeftHandMiddle0 = 3
-    kLeftHandMiddle1 = 4
+    kLeftHandThumb1 = 3
+    kLeftHandThumb2 = 4
+    kLeftHandMiddle0 = 1
+    kLeftHandMiddle1 = 2
     kLeftHandIndex0 = 5
     kLeftHandIndex1 = 6
 
 class Dex3_1_Right_JointIndex(IntEnum):
     kRightHandThumb0 = 0
-    kRightHandThumb1 = 1
-    kRightHandThumb2 = 2
-    kRightHandIndex0 = 3
-    kRightHandIndex1 = 4
-    kRightHandMiddle0 = 5
-    kRightHandMiddle1 = 6
-
+    kRightHandThumb1 = 5
+    kRightHandThumb2 = 6
+    kRightHandMiddle0 = 3
+    kRightHandMiddle1 = 4
+    kRightHandIndex0 = 1
+    kRightHandIndex1 = 2
 
 unitree_gripper_indices = [4, 9] # [thumb, index]
 Gripper_Num_Motors = 2
