@@ -1101,6 +1101,9 @@ if __name__ == "__main__":
             current_lr_arm_q  = arm.get_current_dual_arm_q()
             current_lr_arm_dq = arm.get_current_dual_arm_dq()
 
+            print(current_lr_arm_q, current_lr_arm_dq)
+            print(L_tf_target.homogeneous, R_tf_target.homogeneous)
+
             sol_q, sol_tauff = arm_ik.solve_ik(L_tf_target.homogeneous, R_tf_target.homogeneous, current_lr_arm_q, current_lr_arm_dq)
 
             arm.ctrl_dual_arm(sol_q, sol_tauff)

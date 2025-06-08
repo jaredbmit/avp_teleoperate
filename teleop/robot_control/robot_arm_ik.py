@@ -20,10 +20,12 @@ class G1_29_ArmIK:
         self.Unit_Test = Unit_Test
         self.Visualization = Visualization
 
+        g1_dir = parent2_dir + "/assets/g1/"
+        urdf_file = g1_dir + "g1_body29_hand14.urdf"
         if not self.Unit_Test:
-            self.robot = pin.RobotWrapper.BuildFromURDF('../assets/g1/g1_body29_hand14.urdf', '../assets/g1/')
+            self.robot = pin.RobotWrapper.BuildFromURDF(urdf_file, g1_dir)
         else:
-            self.robot = pin.RobotWrapper.BuildFromURDF('../../assets/g1/g1_body29_hand14.urdf', '../../assets/g1/') # for test
+            self.robot = pin.RobotWrapper.BuildFromURDF(urdf_file, g1_dir)
 
         self.mixed_jointsToLockIDs = [
                                         "left_hip_pitch_joint" ,

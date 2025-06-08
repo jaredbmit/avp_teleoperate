@@ -115,6 +115,7 @@ class RetargetingConfig:
     @classmethod
     def set_default_urdf_dir(cls, urdf_dir: Union[str, Path]):
         path = Path(urdf_dir)
+        print(path)
         if not path.exists():
             raise ValueError(f"URDF dir {urdf_dir} not exists.")
         cls._DEFAULT_URDF_DIR = urdf_dir
