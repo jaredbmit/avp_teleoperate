@@ -237,7 +237,7 @@ class Dex3_1_Simple_Controller:
         q = 0.0
         dq = 0.0
         tau = 0.0
-        kp = 1.5
+        kp = 0.75
         kd = 0.2
 
         # initialize dex3-1's left hand cmd msg
@@ -293,20 +293,6 @@ class Dex3_1_Simple_Controller:
             self.motor_mode |= (self.status & 0x07) << 4
             self.motor_mode |= (self.timeout & 0x01) << 7
             return self.motor_mode
-
-    def ctrl_dual_hand_binary(self, left_cmd: bool, right_cmd: bool):
-        """True means close"""
-        print("left: ", [self.left_hand_state_array[idx] for idx in range(7)])
-        print("right: ", [self.right_hand_state_array[idx] for idx in range(7)])
-        if left_cmd:
-            left_q_target = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]) * np.pi / 3
-        else:
-            left_q_target = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]) * np.pi / 3
-        if right_cmd:
-            right_q_target = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]) * np.pi / 3
-        else:
-            right_q_target = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]) * np.pi / 3
-        self.ctrl_dual_hand(left_q_target, right_q_target)
 
     def ctrl_dual_hand(self, left_q_target, right_q_target):
         """Set target joint positions for left and right hands."""
